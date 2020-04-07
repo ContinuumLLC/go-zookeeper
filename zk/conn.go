@@ -1292,7 +1292,9 @@ func (c *Conn) cleanLoop() {
 	for {
 		select {
 		case l := <-c.cleanupChan:
-			c.clean(l)
+			go func() {
+				c.clean(l)
+			}()
 		case <-c.shouldQuit:
 			return
 		}
@@ -1305,31 +1307,41 @@ func (c *Conn) cleanLoop() {
 func (c *Conn) clean(nodePath string) {
 	parts := strings.Split(nodePath, "/")
 	rootPath := strings.Join(parts[:len(parts)-1], "/")
+	if rootPath == "" {
+		rootPath = "/"
+	}
 	nodeName := parts[len(parts)-1]
 
 	for {
-		children, _, err := c.Children(rootPath)
-		if err != nil {
-			if err == ErrNoNode {
-				break
+		select {
+		case <-c.shouldQuit:
+			return
+		default:
+			children, _, err := c.Children(rootPath)
+			if err != nil {
+				if err == ErrNoNode {
+					break
+				}
+				c.logger.Printf("cannot get children of the node %s, err %v", rootPath, err)
+				continue
 			}
-			continue
-		}
-		exist := false
-		for _, p := range children {
-			if strings.HasPrefix(p, nodeName) {
-				exist = true
-				break
-			}
-		}
-
-		if exist {
-			if err := c.Delete(nodePath, -1); err != nil {
-				if err != ErrNoNode {
-					continue
+			exist := false
+			for _, p := range children {
+				if strings.HasPrefix(p, nodeName) {
+					exist = true
+					break
 				}
 			}
+
+			if exist {
+				if err := c.Delete(nodePath, -1); err != nil {
+					if err != ErrNoNode {
+						continue
+					}
+					c.logger.Printf("cannot clean the node %s, err %v", nodePath, err)
+				}
+			}
+			break
 		}
-		break
 	}
 }
