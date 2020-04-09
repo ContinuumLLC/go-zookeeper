@@ -1336,9 +1336,9 @@ func (c *Conn) clean(nodePath string) {
 			if exist {
 				if err := c.Delete(nodePath, -1); err != nil {
 					if err != ErrNoNode {
+						c.logger.Printf("cannot clean the node %s, err %v", nodePath, err)
 						continue
 					}
-					c.logger.Printf("cannot clean the node %s, err %v", nodePath, err)
 				}
 			}
 			break
