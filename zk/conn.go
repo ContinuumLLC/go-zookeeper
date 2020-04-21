@@ -105,7 +105,7 @@ type Conn struct {
 	debugCloseRecvLoop bool
 	debugReauthDone    chan struct{}
 
-	cleanupChan chan string
+	cleanupChan chan zkNode
 
 	logger  Logger
 	logInfo bool // true if information messages are logged; false if only errors are logged
@@ -1286,15 +1286,19 @@ func (c *Conn) Server() string {
 	return c.server
 }
 
+// zkNode represent zookeeper node with a session identifier within which the node was created
+type zkNode struct {
+	path      string
+	sessionID int64
+}
+
 // cleanLoop cleans obsolete nodes, which were created, but after some erroneous behaviour (e.g. ErrConnectionClosed)
 // are left bound to the session, but the client is not aware of it anymore, since the error has been propagated up the call stack
 func (c *Conn) cleanLoop() {
 	for {
 		select {
 		case l := <-c.cleanupChan:
-			go func() {
-				c.clean(l)
-			}()
+			c.clean(l)
 		case <-c.shouldQuit:
 			return
 		}
@@ -1304,8 +1308,13 @@ func (c *Conn) cleanLoop() {
 // clean deletes the node if it still exists,
 // the input nodePath might not have sequence number at the end, so we have to check whether the prefix,
 // protected by guid, matches one of the children of the root path
-func (c *Conn) clean(nodePath string) {
-	parts := strings.Split(nodePath, "/")
+func (c *Conn) clean(node zkNode) {
+	// if it is a new session established, all ephemeral nodes from the previous will be cleared by zkServer
+	if c.sessionID != node.sessionID {
+		return
+	}
+
+	parts := strings.Split(node.path, "/")
 	rootPath := strings.Join(parts[:len(parts)-1], "/")
 	if rootPath == "" {
 		rootPath = "/"
@@ -1313,35 +1322,30 @@ func (c *Conn) clean(nodePath string) {
 	nodeName := parts[len(parts)-1]
 
 	for {
-		select {
-		case <-c.shouldQuit:
-			return
-		default:
-			children, _, err := c.Children(rootPath)
-			if err != nil {
-				if err == ErrNoNode {
-					break
-				}
-				c.logger.Printf("cannot get children of the node %s, err %v", rootPath, err)
-				continue
+		children, _, err := c.Children(rootPath)
+		if err != nil {
+			if err == ErrNoNode {
+				break
 			}
-			exist := false
-			for _, p := range children {
-				if strings.HasPrefix(p, nodeName) {
-					exist = true
-					break
-				}
-			}
-
-			if exist {
-				if err := c.Delete(nodePath, -1); err != nil {
-					if err != ErrNoNode {
-						continue
-					}
-					c.logger.Printf("cannot clean the node %s, err %v", nodePath, err)
-				}
-			}
-			break
+			c.logger.Printf("cannot get children of the node %s, err %v", rootPath, err)
+			continue
 		}
+		exist := false
+		for _, p := range children {
+			if strings.HasPrefix(p, nodeName) {
+				exist = true
+				break
+			}
+		}
+
+		if exist {
+			if err := c.Delete(node.path, -1); err != nil {
+				if err != ErrNoNode {
+					continue
+				}
+				c.logger.Printf("cannot clean the node %s, err %v", node.path, err)
+			}
+		}
+		break
 	}
 }

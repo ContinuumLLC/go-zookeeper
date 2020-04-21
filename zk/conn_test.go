@@ -80,7 +80,10 @@ func TestClean(t *testing.T) {
 		t.Fatalf("Create returned error: %v", err)
 	}
 
-	zk.cleanupChan <- path
+	zk.cleanupChan <- zkNode{
+		path:      path,
+		sessionID: zk.sessionID,
+	}
 
 	exists, _, evCh, err := zk.ExistsW(path)
 	if exists {

@@ -46,7 +46,10 @@ func (l *Lock) Lock() error {
 	path, err := l.lock()
 	if err != nil {
 		if err == ErrConnectionClosed && path != "" {
-			l.c.cleanupChan <- path
+			l.c.cleanupChan <- zkNode{
+				path:      path,
+				sessionID: l.c.sessionID,
+			}
 		}
 		return err
 	}
@@ -154,7 +157,10 @@ func (l *Lock) Unlock() error {
 	}
 	if err := l.c.Delete(l.lockPath, -1); err != nil {
 		if err == ErrConnectionClosed {
-			l.c.cleanupChan <- l.lockPath
+			l.c.cleanupChan <- zkNode{
+				path:      l.lockPath,
+				sessionID: l.c.sessionID,
+			}
 		}
 		return err
 	}
