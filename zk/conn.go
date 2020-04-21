@@ -1341,9 +1341,9 @@ func (c *Conn) clean(node zkNode) {
 		if exist {
 			if err := c.Delete(node.path, -1); err != nil {
 				if err != ErrNoNode {
+					c.logger.Printf("cannot clean the node %s, err %v", node.path, err)
 					continue
 				}
-				c.logger.Printf("cannot clean the node %s, err %v", node.path, err)
 			}
 		}
 		break
