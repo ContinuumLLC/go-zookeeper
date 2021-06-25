@@ -14,4 +14,4 @@ enabled = true
 
 
   [analyzers.meta]
-  import_path = 'github.com/samuel/go-zookeeper/zk'
+  import_path = 'github.com/ContinuumLLC/go-zookeeper/zk'
